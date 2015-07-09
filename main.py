@@ -5,6 +5,8 @@ import pygame.time
 import pygame.font
 import collision
 import draw
+from random import randint
+
 pygame.init()
 
 clock = 0
@@ -24,17 +26,30 @@ draw.init(width,height)
 
 #shapes = {}
 
-objects = {}
-large = 0
+object_dict = {'creep':{}, 'tower':{}, 'projectile':{}, 'particle':{}}
+large_dict =  {'creep':-1, 'tower':-1, 'projectile':-1, 'particle':-1}
 
-scale = 40
+kill_list = set()
+
+scale = 20
 
 def make_map(level):
     world_map = {}
-    for i in range(len(level)):
-        for j in range(len(level[i])):
-            if level[i][j]:
-                world_map[(i,j)] = {'cord':(i,j), 'next':None, 'dist':9999999}
+    
+    #for i in range(len(level)):
+    #    for j in range(len(level[i])):
+    #        if level[i][j]:
+    #            world_map[(i,j)] = {'cord':(i,j), 'next':None, 'dist':9999999}
+
+    i = -1
+    j = 0
+    for c in level:
+        i += 1
+        if c == '1':
+            world_map[(i,j)] = {'cord':(i,j), 'next':None, 'dist':9999999}
+        elif c == ':':
+            j += 1
+            i = -1
 
     return world_map
 
@@ -48,24 +63,32 @@ def pathing(world, dest):
         nodes.remove(n)
         nx = world[n]['cord'][0]
         ny = world[n]['cord'][1]
-        for i,j in [(-1,0),(1,0),(0,-1),(0,1)]:  
-            if world.get((nx+i, ny+j),None) and world[n]['next'] != (nx+i, ny+j) and world[(nx+i,ny+j)]['dist'] > world[n]['dist'] + pow(pow(i,2) + pow(j,2),0.5):
+        #for i,j in [(-1,0),(1,0),(0,-1),(0,1)]:
+        for i,j in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
+            if world.get((nx+i, ny+j),None) and world[n]['next'] != (nx+i, ny+j) and world[(nx+i,ny+j)]['dist'] >= world[n]['dist'] + pow(pow(i,2) + pow(j,2),0.5):
                 nodes.append(world[(nx+i,ny+j)]['cord'])
                 world[(nx+i,ny+j)]['next'] = n
                 #print world[(nx+i,ny+j)]['dist'], ', ', world[n]['dist'] + pow(pow(i,2) + pow(j,2),0.5)
                 world[(nx+i,ny+j)]['dist'] = world[n]['dist'] + pow(pow(i,2) + pow(j,2),0.5)
     return world
 
-level = [[0,0,1,1,1,1,0,0],
-         [0,0,1,1,0,0,0,0],
-         [0,1,1,1,0,0,0,0],
-         [0,1,1,0,0,0,0,0],
-         [0,1,1,1,0,0,1,1],
-         [0,0,1,1,1,1,1,0],
-         [0,0,0,0,1,1,0,0]]
+
+
+level = ['00000110000:',
+         '00000110000:',
+         '00011110000:',
+         '00011000000:',
+         '00011000000:',
+         '00010000000:',
+         '00011000000:',
+         '00001111111:',
+         '00000000000:',
+]
+
+level = ''.join(level)
 
 world_map = make_map(level)
-world_map = pathing(world_map,(4,7))
+world_map = pathing(world_map,(10,7))
 
 
 #type: 1 = point, 2 = circle, 4 = poly
@@ -78,14 +101,18 @@ def shape_build(type, rad=None, poly=None):
         shape['poly'] = poly
     return shape    
 
-class Creep:
-    def __init__(self, start, speed=1.0, debug=False):
-        global objects, large
+class Object:
+    def register(self):
+        global object_dict, large_dict
         id = 0
-        while id in objects:
+        while id in object_dict[self.type]:
             id += 1
-        large = max(large, id)
+        large_dict[self.type] = max(large_dict[self.type], id)
         self.id = id
+        object_dict[self.type][id] = self
+
+class Test_Creep(Object):
+    def __init__(self, start, speed=1.0, debug=False): 
         self.type = 'creep'
         self.x = start[0]*scale+scale
         self.y = start[1]*scale+scale
@@ -93,24 +120,31 @@ class Creep:
         self.node = world_map[start]['next']
         self.shape = shape_build(2, rad=5)
         self.debug = debug
-        objects[id] = self
-        
+        self.dx = self.node[0]*scale+scale + randint(-scale/2,scale/2)
+        self.dy = self.node[1]*scale+scale + randint(-scale/2,scale/2)
+        self.max_hp = 10.0
+        self.hp = 10.0
+
+        self.register()
 
     def update(self):
         if self.node == None:
             #self.node = 1
             #self.x,self.y = self.route[0]
-            object_kill(self.id)
+            object_kill(self.id, 'creep')
         else:
             #print self.node
-            dx,dy = self.node
-            diff_x = dx*scale+scale-self.x
-            diff_y = dy*scale+scale-self.y
+            #dx,dy = self.node
+            diff_x = self.dx-self.x
+            diff_y = self.dy-self.y
             dist = pow(pow(diff_x,2) + pow(diff_y,2),0.5)
             dir = math.atan2(diff_y, diff_x)
 
-            if dist < 0.5:
+            if dist < scale/4:
                 self.node = world_map[self.node]['next']
+                if self.node:
+                    self.dx = self.node[0]*scale+scale + randint(-scale/2,scale/2)
+                    self.dy = self.node[1]*scale+scale + randint(-scale/2,scale/2)
             else:
                 #mx = self.speed * diff_x/(abs(diff_x)+abs(diff_y))
                 #my = self.speed * diff_y/(abs(diff_x)+abs(diff_y))
@@ -121,24 +155,22 @@ class Creep:
 
         if self.debug:
             draw.draw_text('node: '+str(self.node), (0,15), 255, 255, 255)
-            draw.draw_text('diff: '+str(diff_x)+','+str(diff_y), (0,30), 255, 255, 255)
             draw.draw_text('pos: '+str((self.x,self.y)), (0,45), 255, 255, 255)
-            draw.draw_text('dest: '+str((dx,dy)), (0,60), 255, 255, 255)
-            draw.draw_text('len: '+str(len(self.route)), (0,75), 255, 255, 255)
-            
+            draw.draw_text('dest: '+str((self.dx,self.dy)), (0,60), 255, 255, 255)
+ 
 
     def draw(self):
-        draw.draw_circle((int(self.x),int(self.y)), self.shape['rad'], 200, 255, 200)
+        draw.draw_circle((int(self.x),int(self.y)), self.shape['rad'], 50, 150, 255)
+        draw.draw_circle((int(self.x),int(self.y)), int(self.shape['rad']*self.hp/self.max_hp), 255, 100, 200)
 
-class Tower:
+    def damage(self, d):
+        self.hp = max(self.hp - d, 0)
+        if self.hp <= 0:
+            object_kill(self.id, 'creep')
+        
+
+class Tower_beam(Object):
     def __init__(self, x, y, range, speed, debug=False):
-        global objects, large
-        id = 0
-        while id in objects:
-            id += 1
-        large = max(large, id)
-
-        self.id = id
         self.type = 'tower'
         self.x = x
         self.y = y
@@ -149,7 +181,7 @@ class Tower:
         self.shape = shape_build(2, rad=8)
         self.debug = debug
         
-        objects[id] = self
+        self.register()
         
     def update(self):
         if self.cooldown > 0:
@@ -158,38 +190,77 @@ class Tower:
         else:
             target_id = -1
             close = 0
-            for o in [o for o in objects.values() if o.id != self.id and o.type == 'creep']:
-               dist = pow(pow(o.x-self.x,2) + pow(o.y-self.y,2),0.5)
+            for c in object_dict['creep'].values():
+               dist = pow(pow(c.x-self.x,2) + pow(c.y-self.y,2),0.5)
                if dist <= self.range and (dist < close or target_id == -1):
                    close = dist
-                   target_id = o.id
+                   target_id = c.id
 
             if target_id >= 0:
                 #print 'fire at target: ', target_id
-                Beam(self.x, self.y, objects[target_id].x, objects[target_id].y)
+                Beam(self.x, self.y, object_dict['creep'][target_id].x, object_dict['creep'][target_id].y)
                 self.cooldown = 1000
-                object_kill(target_id)
+                #object_kill(target_id)
+                object_dict['creep'][target_id].damage(2)
                 
         if self.debug:
             draw.draw_text('cooldown: '+str(self.cooldown), (0,15), 255, 255, 255)
         
     def draw(self):
         draw.draw_circle((int(self.x),int(self.y)), self.shape['rad'], 250, 100, 100)
-        if self.cooldown > self.speed:
-            draw.draw_arc((int(self.x),int(self.y)), self.shape['rad'], 0, 2*math.pi*self.cooldown/1000, 100, 250, 100, 4)
-            draw.draw_arc((int(self.x),int(self.y)), self.shape['rad'], 0.1, 2*math.pi*self.cooldown/1000, 100, 250, 100, 4)
-            draw.draw_arc((int(self.x),int(self.y)), self.shape['rad'], 0.2, 2*math.pi*self.cooldown/1000, 100, 250, 100, 4)
+        draw.draw_circle((int(self.x),int(self.y)), self.shape['rad'] * (1000-self.cooldown)/1000, 100, 250, 100)
+        #if self.cooldown > self.speed:
+        #    draw.draw_arc((int(self.x),int(self.y)), self.shape['rad'], 0, 2*math.pi*self.cooldown/1000, 100, 250, 100, 4)
 
-class Beam:
-    def __init__(self, x1, y1, x2, y2):
-        global objects, large
-        id = 0
-        while id in objects:
-            id += 1
-        large = max(large, id)
-        self.id = id
-        self.type = 'beam'
+
+class Tower_missile(Object):
+    def __init__(self, x, y, range, speed, debug=False):
+        self.type = 'tower'
+        self.x = x
+        self.y = y
+        self.range = range
+        self.speed = speed
+        self.cooldown = 0
         
+        self.shape = shape_build(2, rad=8)
+        self.debug = debug
+        self.target_id = -1
+        
+        self.register()
+        
+    def update(self):
+        if self.cooldown > 0:
+            self.cooldown = max(self.cooldown - self.speed, 0)
+            
+        else:
+            target_id = -1
+            close = 0
+            for c in object_dict['creep'].values():
+               dist = pow(pow(c.x-self.x,2) + pow(c.y-self.y,2),0.5)
+               if dist <= self.range and (dist < close or target_id == -1):
+                   close = dist
+                   target_id = c.id
+
+            self.target_id = target_id
+            if target_id >= 0:
+                #print 'fire at target: ', target_id
+                Missile(self.x, self.y, target_id)
+                self.cooldown = 1000
+                
+        if self.debug:
+            draw.draw_text('cooldown: '+str(self.cooldown), (0,15), 255, 255, 255)
+            draw.draw_text('target: '+str(self.target_id), (0,30), 255, 255, 255)
+        
+    def draw(self):
+        draw.draw_circle((int(self.x),int(self.y)), self.shape['rad'], 250, 100, 100)
+        draw.draw_circle((int(self.x),int(self.y)), self.shape['rad'] * (1000-self.cooldown)/1000, 100, 250, 100)
+        #if self.cooldown > self.speed:
+        #    draw.draw_arc((int(self.x),int(self.y)), self.shape['rad'], 0, 2*math.pi*self.cooldown/1000, 100, 250, 100, 4)
+
+
+class Beam(Object):
+    def __init__(self, x1, y1, x2, y2):
+        self.type = 'particle'
         self.x1 = x1
         self.y1 = y1
         self.x2 = x2
@@ -197,20 +268,66 @@ class Beam:
         self.lifetime = 50
         self.age = 0
 
-        objects[id] = self
+        self.register()
 
     def update(self):
         if self.age >= self.lifetime:
-            object_kill(self.id)
+            object_kill(self.id, self.type)
             
         self.age += 1
 
     def draw(self):
         draw.draw_line((self.x1, self.y1), (self.x2, self.y2), 255*(self.lifetime-self.age)/self.lifetime, 0, 0, 2)
 
-def object_kill(id):
-    global objects
-    objects.pop(id)
+class Missile(Object):
+    def __init__(self, x, y, target_id):
+        self.type = 'projectile'
+        
+        self.x = x
+        self.y = y
+        self.target_id = target_id
+        self.lifetime = 100
+        self.speed = 2.5
+        self.age = 0
+        self.dir = 0
+
+        self.register()
+
+    def update(self):
+        if self.age >= self.lifetime or object_dict['creep'].get(self.target_id, None) == None:
+            object_kill(self.id, self.type)
+
+        else:
+            self.age += 1
+
+            tx = object_dict['creep'][self.target_id].x
+            ty = object_dict['creep'][self.target_id].y
+
+            diff_x = tx-self.x
+            diff_y = ty-self.y
+            dist = pow(pow(diff_x,2) + pow(diff_y,2),0.5)
+            self.dir = math.atan2(diff_y, diff_x)
+
+            if dist < 4:
+                object_kill(self.id, self.type)
+                object_dict['creep'][self.target_id].damage(5)
+            else:
+                mx = min(self.speed, dist) * math.cos(self.dir)
+                my = min(self.speed, dist) * math.sin(self.dir)
+                #print x,',', y
+                self.x,self.y = self.x+mx, self.y+my
+        
+    def draw(self):
+        poly = []
+        for x,y in [(0,0),(8,2),(0,4)]:
+            newx = (x*math.cos(self.dir) - y*math.sin(self.dir))
+            newy = (x*math.sin(self.dir) + y*math.cos(self.dir))
+            poly.append((self.x+newx, self.y+newy))
+        draw.draw_poly(poly, 255, 255, 255)
+
+def object_kill(id, type):
+    global kill_list
+    kill_list.add((id, type))
 
 def get_shape(obj):
     shape = obj['shape']
@@ -258,24 +375,16 @@ while not done:
         if event.type == pygame.QUIT:
             done = True
         if event.type == pygame.MOUSEBUTTONDOWN:
-            Tower(mx, my, 40, 50)
+            if event.button == 1:
+                Tower_missile(mx, my, 150, 20)
+            if event.button == 3:
+                Tower_beam(mx, my, 40, 50)
 
-    """
-    d_key = []
-    for k in spawner:
-        if k <= clock:
-            for x in spawner.get(k,[]):
-                polygon=[(-20,-20),(20,-20),(20,20),(-20,20)]
-                object_build(4,(x,100), shape_build(4, poly=polygon))
-            d_key.append(k)
-    for k in d_key:
-        del spawner[k]
-    """
 
     count += 1
-    if count > 10:
+    if count > 20:
         count = 0
-        Creep(start=(0,5), speed=2.0)
+        Test_Creep(start=(6,0), speed=1.0)
         
     for n in world_map.values():
         pos = map(lambda a:a*scale, n['cord'])
@@ -285,18 +394,19 @@ while not done:
     #objects[0]['pos'] = m_pos
 
     #update loop
-    for o in objects.values():
-        o.update()
+    for type in object_dict:
+        for obj in object_dict[type].values():
+            obj.update()
 
+    for id, type in kill_list:
+        object_dict[type].pop(id)
+
+    kill_list = set()
 
     #draw loop
-    for o in objects.values():
-        o.draw()
-
-    #for p in route:
-    #    draw.draw_circle(p,2, 0,100,150)
-    #for i in range(len(route)-1):
-    #    draw.draw_line(route[i],route[i+1], 0,100,150)
+    for type in object_dict:
+        for obj in object_dict[type].values():
+            obj.draw()
 
     
     draw.draw_text(str(clock/1000.0), (0,0), 255, 255, 255)
