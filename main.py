@@ -3,6 +3,7 @@ from pygame.locals import *
 import time
 import pygame.time
 import pygame.font
+import pygame.image
 import collision
 import draw
 from random import randint
@@ -14,9 +15,6 @@ clock = 0
 size = width, height = 640, 480
 
 draw.init(width,height)
-
-        
-
 
 # shape = {'id': id, 'pos':[x,y], 'poly':[[x1,y1],[x2,y2],...]}
 
@@ -31,7 +29,9 @@ large_dict =  {'creep':-1, 'tower':-1, 'projectile':-1, 'particle':-1}
 
 kill_list = set()
 
-scale = 20
+scale = 15
+tile_size = 11
+tile_border_size = (scale-tile_size)/2
 
 def make_map(level):
     world_map = {}
@@ -41,17 +41,19 @@ def make_map(level):
     #        if level[i][j]:
     #            world_map[(i,j)] = {'cord':(i,j), 'next':None, 'dist':9999999}
 
+    width = 0
     i = -1
     j = 0
     for c in level:
         i += 1
         if c == '1':
             world_map[(i,j)] = {'cord':(i,j), 'next':None, 'dist':9999999}
+            width = max(i, width)
         elif c == ':':
             j += 1
             i = -1
 
-    return world_map
+    return world_map, width+1, j+1
 
 def pathing(world, dest):
     nodes = [dest]
@@ -87,7 +89,7 @@ level = ['00000110000:',
 
 level = ''.join(level)
 
-world_map = make_map(level)
+world_map, world_map_width, world_map_height = make_map(level)
 world_map = pathing(world_map,(10,7))
 
 
@@ -114,14 +116,14 @@ class Object:
 class Test_Creep(Object):
     def __init__(self, start, speed=1.0, debug=False): 
         self.type = 'creep'
-        self.x = start[0]*scale+scale
-        self.y = start[1]*scale+scale
+        self.x = start[0]*scale + scale/2
+        self.y = start[1]*scale + scale/2
         self.speed = speed
         self.node = world_map[start]['next']
         self.shape = shape_build(2, rad=5)
         self.debug = debug
-        self.dx = self.node[0]*scale+scale + randint(-scale/2,scale/2)
-        self.dy = self.node[1]*scale+scale + randint(-scale/2,scale/2)
+        self.dx = self.node[0]*scale + scale/2 #+ randint(-scale/3,scale/3)
+        self.dy = self.node[1]*scale + scale/2 #+ randint(-scale/3,scale/3)
         self.max_hp = 10.0
         self.hp = 10.0
 
@@ -140,11 +142,11 @@ class Test_Creep(Object):
             dist = pow(pow(diff_x,2) + pow(diff_y,2),0.5)
             dir = math.atan2(diff_y, diff_x)
 
-            if dist < scale/4:
+            if dist < scale/5:
                 self.node = world_map[self.node]['next']
                 if self.node:
-                    self.dx = self.node[0]*scale+scale + randint(-scale/2,scale/2)
-                    self.dy = self.node[1]*scale+scale + randint(-scale/2,scale/2)
+                    self.dx = self.node[0]*scale + scale/2 #+ randint(-scale/3,scale/3)
+                    self.dy = self.node[1]*scale + scale/2 #+ randint(-scale/3,scale/3)
             else:
                 #mx = self.speed * diff_x/(abs(diff_x)+abs(diff_y))
                 #my = self.speed * diff_y/(abs(diff_x)+abs(diff_y))
@@ -364,6 +366,9 @@ route = [(200,100), (200,250), (300,250), (350, 200), (400, 300), (100, 300)]
 #Tower(300, 270, 30, 50)
 #Tower(350, 230, 30, 50)
 
+tile_id = draw.load_image('tile_15x15_center.tif')
+tile_corner_id = draw.load_image('tile_15x15_corner.tif')
+tile_side_id = draw.load_image('tile_15x15_side.tif')
 
 count = 0
 #main loop
@@ -385,10 +390,40 @@ while not done:
     if count > 20:
         count = 0
         Test_Creep(start=(6,0), speed=1.0)
-        
-    for n in world_map.values():
-        pos = map(lambda a:a*scale, n['cord'])
-        draw.fill(pos[0]+scale/2+1,pos[1]+scale/2+1,scale-2,scale-2,100,100,200) 
+
+    for x in range(world_map_width):
+        for y in range(world_map_height):
+            tile = world_map.get((x,y), None)
+            if tile:
+                pos_x = x*scale+tile_border_size
+                pos_y = y*scale+tile_border_size
+                draw.draw_image(tile_id, pos_x, pos_y)
+
+    for x in range(world_map_width+1):
+        for y in range(world_map_height+1):
+            t_left  = bool(world_map.get((x-1,y-1)))
+            t_right = bool(world_map.get((x,y-1)))
+            b_left  = bool(world_map.get((x-1,y)))
+            b_right = bool(world_map.get((x,y)))
+            if t_left or t_right or b_left or b_right:
+                pos_x = x*scale-tile_border_size
+                pos_y = y*scale-tile_border_size
+                draw.draw_image(tile_corner_id, pos_x, pos_y)
+            if b_left or b_right:
+                pos_x = x*scale-tile_border_size
+                pos_y = y*scale+tile_border_size
+                draw.draw_image(tile_side_id, pos_x, pos_y)
+            if t_right or b_right:
+                pos_x = x*scale+tile_border_size
+                pos_y = y*scale-tile_border_size
+                draw.draw_image(tile_side_id, pos_x, pos_y, angle=-90)
+                
+    
+    #for n in world_map.values():
+        #pos = map(lambda a:a*scale, n['cord'])
+        #draw.draw_image(tile_id, pos[0], pos[1])
+        #draw.draw_poly([], 255,150,150)
+        #draw.fill(pos[0]+scale/2+1,pos[1]+scale/2+1,scale-2,scale-2,100,100,200) 
         #screen.fill((100,100,200), (pos[0]+1,pos[1]+1,scale-2,scale-2))
 
     #objects[0]['pos'] = m_pos
