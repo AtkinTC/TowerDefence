@@ -1,22 +1,51 @@
 import sys, pygame
 from pygame.locals import *
 import pygame.font
+import pygame.image
+import pygame.transform
 
 w, h = 320,240
 screen = None
 font = None
 
+tile = None
+
+image_dict = {}
+image_dict_large = -1
+
 def t_add(t1,t2):
     return map(lambda a,b: a+b,t1,t2)
 
 def init(width=320, height=240):
-    global screen, w, h, font
+    global screen, w, h, font, tile
     w = width
     h = height
     screen = pygame.display.set_mode((w,h))
     screen.fill((0,0,0))
     pygame.font.init()
     font = pygame.font.SysFont(None, 15)
+
+def load_image(name, alpha=False):
+    global image_dict, image_dict_large
+    im = pygame.image.load(name)
+    if alpha:
+        im = im.convert_alpha(screen)
+    else:
+        im = im.convert(screen)
+
+    id = 0
+    while id in image_dict:
+        id += 1
+    image_dict_large = max(image_dict_large, id)
+    image_dict[id] = im
+    return id
+
+def draw_image(id, x, y, area=None, angle=0):
+    im = image_dict.get(id, None)
+    if im:
+        if angle:
+            im = pygame.transform.rotate(im, angle)
+        screen.blit(im, (x,y), area)
 
 def fill(x, y, w, h, r, g, b):
     screen.fill((r,g,b),(x,y,w,h))
